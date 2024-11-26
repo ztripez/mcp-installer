@@ -50,6 +50,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["name"],
         },
       },
+      {
+        name: "install_local_mcp_server",
+        description:
+          "Install an MCP server whose code is cloned locally on your computer",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description:
+                "The path to the MCP server code cloned on your computer",
+            },
+            args: {
+              type: "array",
+              items: { type: "string" },
+              description: "The arguments to pass along",
+            },
+            env: {
+              type: "array",
+              items: { type: "string" },
+              description: "The environment variables to set",
+            },
+          },
+          required: ["path"],
+        },
+      },
     ],
   };
 });
@@ -81,10 +107,10 @@ async function isNpmPackage(name: string) {
   }
 }
 
-function installWithArgsToClaudeDesktop(
+function installToClaudeDesktop(
   name: string,
-  npmIfTrueElseUvx: boolean,
-  args?: string[],
+  cmd: string,
+  args: string[],
   env?: string[]
 ) {
   const configPath =
@@ -104,9 +130,6 @@ function installWithArgsToClaudeDesktop(
           "claude_desktop_config.json"
         );
 
-  // If the name is in a scoped package, we need to remove the scope
-  const serverName = /^@.*\//i.test(name) ? name.split("/")[1] : name;
-
   let config: any;
   try {
     config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -115,15 +138,108 @@ function installWithArgsToClaudeDesktop(
   }
 
   const newServer = {
-    command: npmIfTrueElseUvx ? "npx" : "uvx",
-    args: [name, ...(args ?? [])],
+    command: cmd,
+    args: args,
     ...(env ? { env: env } : {}),
   };
 
   const mcpServers = config.mcpServers ?? {};
-  mcpServers[serverName] = newServer;
+  mcpServers[name] = newServer;
   config.mcpServers = mcpServers;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+}
+
+function installRepoWithArgsToClaudeDesktop(
+  name: string,
+  npmIfTrueElseUvx: boolean,
+  args?: string[],
+  env?: string[]
+) {
+  // If the name is in a scoped package, we need to remove the scope
+  const serverName = /^@.*\//i.test(name) ? name.split("/")[1] : name;
+
+  installToClaudeDesktop(
+    serverName,
+    npmIfTrueElseUvx ? "npx" : "uvx",
+    [name, ...(args ?? [])],
+    env
+  );
+}
+
+async function attemptNodeInstall(
+  directory: string
+): Promise<Record<string, string>> {
+  await spawnPromise("npm", ["install"], { cwd: directory });
+
+  // Run down package.json looking for bins
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(directory, "package.json"), "utf-8")
+  );
+
+  if (pkg.bin) {
+    return Object.keys(pkg.bin).reduce((acc, key) => {
+      acc[key] = path.resolve(directory, pkg.bin[key]);
+      return acc;
+    }, {} as Record<string, string>);
+  }
+
+  if (pkg.main) {
+    return { [pkg.name]: path.resolve(directory, pkg.main) };
+  }
+
+  return {};
+}
+
+async function installLocalMcpServer(
+  dirPath: string,
+  args?: string[],
+  env?: string[]
+) {
+  if (!fs.existsSync(dirPath)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Path ${dirPath} does not exist locally!`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  if (fs.existsSync(path.join(dirPath, "package.json"))) {
+    const servers = await attemptNodeInstall(dirPath);
+
+    Object.keys(servers).forEach((name) => {
+      installToClaudeDesktop(
+        name,
+        "node",
+        [servers[name], ...(args ?? [])],
+        env
+      );
+    });
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Installed the following servers via npm successfully! ${Object.keys(
+            servers
+          ).join(";")} Tell the user to restart the app`,
+        },
+      ],
+    };
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Can't figure out how to install ${dirPath}`,
+      },
+    ],
+    isError: true,
+  };
 }
 
 async function installRepoMcpServer(
@@ -144,7 +260,7 @@ async function installRepoMcpServer(
   }
 
   if (await isNpmPackage(name)) {
-    installWithArgsToClaudeDesktop(name, true, args, env);
+    installRepoWithArgsToClaudeDesktop(name, true, args, env);
 
     return {
       content: [
@@ -168,7 +284,7 @@ async function installRepoMcpServer(
     };
   }
 
-  installWithArgsToClaudeDesktop(name, false, args, env);
+  installRepoWithArgsToClaudeDesktop(name, false, args, env);
 
   return {
     content: [
@@ -181,9 +297,6 @@ async function installRepoMcpServer(
 }
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name !== "install_repo_mcp_server") {
-  }
-
   try {
     if (request.params.name === "install_repo_mcp_server") {
       const { name, args, env } = request.params.arguments as {
@@ -193,6 +306,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
 
       return await installRepoMcpServer(name, args, env);
+    }
+
+    if (request.params.name === "install_local_mcp_server") {
+      const dirPath = request.params.arguments!.path as string;
+      const { args, env } = request.params.arguments as {
+        args?: string[];
+        env?: string[];
+      };
+
+      return await installLocalMcpServer(dirPath, args, env);
     }
 
     throw new Error(`Unknown tool: ${request.params.name}`);
