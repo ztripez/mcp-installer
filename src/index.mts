@@ -44,7 +44,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             env: {
               type: "array",
               items: { type: "string" },
-              description: "The environment variables to set",
+              description: "The environment variables to set, delimited by =",
             },
           },
           required: ["name"],
@@ -70,7 +70,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             env: {
               type: "array",
               items: { type: "string" },
-              description: "The environment variables to set",
+              description: "The environment variables to set, delimited by =",
             },
           },
           required: ["path"],
@@ -137,10 +137,17 @@ function installToClaudeDesktop(
     config = {};
   }
 
+  const envObj = (env ?? []).reduce((acc, val) => {
+    const [key, value] = val.split("=");
+    acc[key] = value;
+
+    return acc;
+  }, {} as Record<string, string>);
+
   const newServer = {
     command: cmd,
     args: args,
-    ...(env ? { env: env } : {}),
+    ...(env ? { env: envObj } : {}),
   };
 
   const mcpServers = config.mcpServers ?? {};
