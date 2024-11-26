@@ -4,7 +4,7 @@ This server is a server that installs other MCP servers for you. Install it, and
 
 ### How to install:
 
-Put this into your claude_desktop_config.json (either at `~/Library/Application Support/Claude` on macOS or `C:\Users\NAME\AppData\Roaming\Claude` on Windows):
+Put this into your `claude_desktop_config.json` (either at `~/Library/Application Support/Claude` on macOS or `C:\Users\NAME\AppData\Roaming\Claude` on Windows):
 
 ```json
   "mcpServers": {
