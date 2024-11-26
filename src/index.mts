@@ -13,8 +13,8 @@ import { spawnPromise } from "spawn-rx";
 
 const server = new Server(
   {
-    name: "mcp-meta",
-    version: "0.1.0",
+    name: "mcp-installer",
+    version: "0.5.0",
   },
   {
     capabilities: {

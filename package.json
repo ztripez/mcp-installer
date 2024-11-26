@@ -1,6 +1,6 @@
 {
-  "name": "mcp-meta",
-  "version": "0.1.0",
+  "name": "mcp-installer",
+  "version": "0.5.0",
   "bin": {
     "mcp-youtube": "./lib/index.mjs"
   },
