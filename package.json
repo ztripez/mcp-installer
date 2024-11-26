@@ -1,5 +1,5 @@
 {
-  "name": "mcp-installer",
+  "name": "@anaisbetts/mcp-installer",
   "version": "0.5.0",
   "bin": {
     "mcp-installer": "./lib/index.mjs"
