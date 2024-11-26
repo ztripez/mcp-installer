@@ -2,6 +2,21 @@
 
 This server is a server that installs other MCP servers for you. Install it, and you can ask Claude to install MCP servers hosted in npm or PyPi for you. Requires `npx` and `uv` to be installed for node and Python servers respectively.
 
+### How to install:
+
+Put this into your claude_desktop_config.json (either at `~/Library/Application Support/Claude` on macOS or `C:\Users\NAME\AppData\Roaming\Claude` on Windows):
+
+```json
+  "mcpServers": {
+    "mcp-installer": {
+      "command": "npx",
+      "args": [
+        "@anaisbetts/mcp-installer@0.5.0-beta.1"
+      ]
+    }
+  }
+```
+
 ### Example prompts
 
 > Hey Claude, install the MCP server named mcp-server-fetch
