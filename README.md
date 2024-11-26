@@ -11,7 +11,7 @@ Put this into your `claude_desktop_config.json` (either at `~/Library/Applicatio
     "mcp-installer": {
       "command": "npx",
       "args": [
-        "@anaisbetts/mcp-installer@0.5.0-beta.1"
+        "@anaisbetts/mcp-installer"
       ]
     }
   }
