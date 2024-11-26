@@ -2,7 +2,7 @@
   "name": "mcp-installer",
   "version": "0.5.0",
   "bin": {
-    "mcp-youtube": "./lib/index.mjs"
+    "mcp-installer": "./lib/index.mjs"
   },
   "description": "A MCP server to install other MCP servers",
   "main": "index.js",
