@@ -126,65 +126,76 @@ function installWithArgsToClaudeDesktop(
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name !== "install_repo_mcp_server") {
-    throw new Error(`Unknown tool: ${request.params.name}`);
+async function installRepoMcpServer(
+  name: string,
+  args?: string[],
+  env?: string[]
+) {
+  if (!(await hasNodeJs())) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Node.js is not installed, please install it!`,
+        },
+      ],
+      isError: true,
+    };
   }
 
-  try {
-    const { name, args, env } = request.params.arguments as {
-      name: string;
-      args?: string[];
-      env?: string[];
-    };
-
-    if (!(await hasNodeJs())) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Node.js is not installed, please install it!`,
-          },
-        ],
-        isError: true,
-      };
-    }
-
-    if (await isNpmPackage(name)) {
-      installWithArgsToClaudeDesktop(name, true, args, env);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: "Installed MCP server via npx successfully! Tell the user to restart the app",
-          },
-        ],
-      };
-    }
-
-    if (!(await hasUvx())) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Python uv is not installed, please install it! Tell users to go to https://docs.astral.sh/uv`,
-          },
-        ],
-        isError: true,
-      };
-    }
-
-    installWithArgsToClaudeDesktop(name, false, args, env);
+  if (await isNpmPackage(name)) {
+    installWithArgsToClaudeDesktop(name, true, args, env);
 
     return {
       content: [
         {
           type: "text",
-          text: "Installed MCP server via uvx successfully! Tell the user to restart the app",
+          text: "Installed MCP server via npx successfully! Tell the user to restart the app",
         },
       ],
     };
+  }
+
+  if (!(await hasUvx())) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Python uv is not installed, please install it! Tell users to go to https://docs.astral.sh/uv`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  installWithArgsToClaudeDesktop(name, false, args, env);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: "Installed MCP server via uvx successfully! Tell the user to restart the app",
+      },
+    ],
+  };
+}
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  if (request.params.name !== "install_repo_mcp_server") {
+  }
+
+  try {
+    if (request.params.name === "install_repo_mcp_server") {
+      const { name, args, env } = request.params.arguments as {
+        name: string;
+        args?: string[];
+        env?: string[];
+      };
+
+      return await installRepoMcpServer(name, args, env);
+    }
+
+    throw new Error(`Unknown tool: ${request.params.name}`);
   } catch (err) {
     return {
       content: [
