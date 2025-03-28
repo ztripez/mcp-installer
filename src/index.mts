@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import yargs from "yargs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -7,9 +8,12 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import * as os from "os";
-import * as fs from "fs";
+import * as fs from "node:fs";
 import * as path from "path";
 import { spawnPromise } from "spawn-rx";
+
+// Declare configFilePath at a higher scope
+let configFilePath: string;
 
 const server = new Server(
   {
@@ -28,7 +32,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "install_repo_mcp_server",
-        description: "Install an MCP server via npx or uvx",
+        description:
+          "Install an MCP server package (npm or PyPI) and add it to the client configuration file.",
         inputSchema: {
           type: "object",
           properties: {
@@ -53,7 +58,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "install_local_mcp_server",
         description:
-          "Install an MCP server whose code is cloned locally on your computer",
+          "Install an MCP server from local source code and add it to the client configuration file.",
         inputSchema: {
           type: "object",
           properties: {
@@ -107,40 +112,23 @@ async function isNpmPackage(name: string) {
   }
 }
 
-function installToClaudeDesktop(
+function installToServerConfig(
   name: string,
   cmd: string,
   args: string[],
   env?: string[]
 ) {
-  const configPath =
-    process.platform === "win32"
-      ? path.join(
-          os.homedir(),
-          "AppData",
-          "Roaming",
-          "Claude",
-          "claude_desktop_config.json"
-        )
-      : path.join(
-          os.homedir(),
-          "Library",
-          "Application Support",
-          "Claude",
-          "claude_desktop_config.json"
-        );
-
   let config: any;
   try {
-    config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    config = JSON.parse(fs.readFileSync(configFilePath, "utf8"));
   } catch (e) {
+    // If file doesn't exist or is invalid JSON, start with an empty config
     config = {};
   }
 
   const envObj = (env ?? []).reduce((acc, val) => {
-    const [key, value] = val.split("=");
-    acc[key] = value;
-
+    const [key, ...valueParts] = val.split("="); // Handle values containing '='
+    acc[key] = valueParts.join("=");
     return acc;
   }, {} as Record<string, string>);
 
@@ -153,19 +141,19 @@ function installToClaudeDesktop(
   const mcpServers = config.mcpServers ?? {};
   mcpServers[name] = newServer;
   config.mcpServers = mcpServers;
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  fs.writeFileSync(configFilePath, JSON.stringify(config, null, 2));
 }
 
-function installRepoWithArgsToClaudeDesktop(
+function installRepoToServerConfig(
   name: string,
   npmIfTrueElseUvx: boolean,
   args?: string[],
   env?: string[]
 ) {
-  // If the name is in a scoped package, we need to remove the scope
+  // Use the last part of a scoped package name as the server key
   const serverName = /^@.*\//i.test(name) ? name.split("/")[1] : name;
 
-  installToClaudeDesktop(
+  installToServerConfig(
     serverName,
     npmIfTrueElseUvx ? "npx" : "uvx",
     [name, ...(args ?? [])],
@@ -218,7 +206,7 @@ async function installLocalMcpServer(
     const servers = await attemptNodeInstall(dirPath);
 
     Object.keys(servers).forEach((name) => {
-      installToClaudeDesktop(
+      installToServerConfig(
         name,
         "node",
         [servers[name], ...(args ?? [])],
@@ -230,9 +218,9 @@ async function installLocalMcpServer(
       content: [
         {
           type: "text",
-          text: `Installed the following servers via npm successfully! ${Object.keys(
+          text: `Installed the following local Node.js servers: ${Object.keys(
             servers
-          ).join(";")} Tell the user to restart the app`,
+          ).join("; ")}. The client application may need to be restarted.`,
         },
       ],
     };
@@ -267,13 +255,13 @@ async function installRepoMcpServer(
   }
 
   if (await isNpmPackage(name)) {
-    installRepoWithArgsToClaudeDesktop(name, true, args, env);
+    installRepoToServerConfig(name, true, args, env);
 
     return {
       content: [
         {
           type: "text",
-          text: "Installed MCP server via npx successfully! Tell the user to restart the app",
+          text: `Installed MCP server '${name}' via npx successfully! The client application may need to be restarted.`,
         },
       ],
     };
@@ -291,13 +279,13 @@ async function installRepoMcpServer(
     };
   }
 
-  installRepoWithArgsToClaudeDesktop(name, false, args, env);
+  installRepoToServerConfig(name, false, args, env);
 
   return {
     content: [
       {
         type: "text",
-        text: "Installed MCP server via uvx successfully! Tell the user to restart the app",
+        text: `Installed MCP server '${name}' via uvx successfully! The client application may need to be restarted.`,
       },
     ],
   };
@@ -340,8 +328,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function runServer() {
+  // This function now assumes server is already configured and configFilePath is set
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-runServer().catch(console.error);
+async function main() {
+  // Parse command line arguments inside async function
+  const argv = await yargs(process.argv.slice(2))
+    .option("config-file", {
+      alias: "c",
+      description: "Path to the MCP client configuration file (JSON)",
+      type: "string",
+      demandOption: true, // Make the argument required
+    })
+    .help()
+    .alias("help", "h").argv;
+
+  // Assign parsed path to the higher-scoped variable
+  configFilePath = argv.configFile;
+
+  // Now run the server
+  await runServer();
+}
+
+// Execute the main async function
+main().catch(console.error);
